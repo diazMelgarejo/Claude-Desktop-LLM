@@ -22,6 +22,7 @@ import {
   getActiveProviderName,
   checkProvidersHealth,
 } from './tools/agent-tools.js';
+import { defaultSettings } from './config/settings.js';
 
 // Zod schemas are for internal validation
 const QuerySchema = z.object({
@@ -286,7 +287,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // Log startup configuration
   console.error('MCP Local LLM Server running on stdio');
+  console.error(`Configuration:`);
+  console.error(`  Active Provider: ${defaultSettings.activeProvider === 'ollama' ? 'Ollama' : 'LM Studio'}`);
+  console.error(`  Ollama URL: ${defaultSettings.ollama.baseUrl}`);
+  console.error(`  Ollama Model: ${defaultSettings.ollama.defaultModel}`);
+  console.error(`  LM Studio URL: ${defaultSettings.lmstudio.baseUrl}`);
+  console.error(`  LM Studio Model: ${defaultSettings.lmstudio.defaultModel}`);
 }
 
 main().catch((error) => {
