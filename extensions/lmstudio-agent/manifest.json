@@ -6,59 +6,51 @@
   "description": "Connect Claude Desktop to LM Studio as an external AI agent",
   "long_description": "Use local LM Studio models as external agents to delegate tasks, get second opinions, or leverage specialized models for specific tasks. Uses OpenAI-compatible API.",
   "author": {
-    "name": "Claude Desktop LLM"
+    "name": "Yayoboy"
   },
   "license": "MIT",
-  "keywords": ["lmstudio", "llm", "agent", "local", "openai"],
+  "keywords": [
+    "lmstudio",
+    "llm",
+    "agent",
+    "local",
+    "openai"
+  ],
   "server": {
     "type": "node",
-    "command": "node",
-    "args": ["${__dirname}/server/index.js"],
-    "env": {
-      "LMSTUDIO_URL": "${user_config.server_url}",
-      "LMSTUDIO_MODEL": "${user_config.default_model}",
-      "TIMEOUT": "${user_config.timeout}"
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "LMSTUDIO_URL": "${user_config.server_url}",
+        "LMSTUDIO_MODEL": "${user_config.default_model}",
+        "TIMEOUT": "${user_config.timeout}"
+      }
     }
   },
   "user_config": {
     "server_url": {
       "type": "string",
+      "title": "LM Studio Server URL",
       "description": "LM Studio server URL",
       "default": "http://localhost:1234",
       "required": true
     },
     "default_model": {
       "type": "string",
+      "title": "Default Model",
       "description": "Default model to use",
       "default": "default",
       "required": true
     },
     "timeout": {
-      "type": "number",
+      "type": "string",
+      "title": "Timeout (ms)",
       "description": "Request timeout in milliseconds",
-      "default": 120000
+      "default": "120000"
     }
-  },
-  "tools": [
-    {
-      "name": "lmstudio_query",
-      "description": "Send a prompt to LM Studio and get a response"
-    },
-    {
-      "name": "lmstudio_agent",
-      "description": "Delegate a complex task to LM Studio as an external agent"
-    },
-    {
-      "name": "lmstudio_chat",
-      "description": "Have a multi-turn conversation with LM Studio"
-    },
-    {
-      "name": "lmstudio_list_models",
-      "description": "List all available models in LM Studio"
-    },
-    {
-      "name": "lmstudio_status",
-      "description": "Check if LM Studio is running and accessible"
-    }
-  ]
+  }
 }
