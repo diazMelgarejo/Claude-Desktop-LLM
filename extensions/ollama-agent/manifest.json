@@ -1,0 +1,55 @@
+{
+  "manifest_version": "0.3",
+  "name": "ollama-agent",
+  "display_name": "Ollama Agent",
+  "version": "1.0.0",
+  "description": "Connect Claude Desktop to Ollama as an external AI agent",
+  "long_description": "Use local Ollama models as external agents to delegate tasks, get second opinions, or leverage specialized models for specific tasks.",
+  "author": {
+    "name": "Yayoboy"
+  },
+  "license": "MIT",
+  "keywords": [
+    "ollama",
+    "llm",
+    "agent",
+    "local"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "OLLAMA_URL": "${user_config.server_url}",
+        "OLLAMA_MODEL": "${user_config.default_model}",
+        "TIMEOUT": "${user_config.timeout}"
+      }
+    }
+  },
+  "user_config": {
+    "server_url": {
+      "type": "string",
+      "title": "Ollama Server URL",
+      "description": "Ollama server URL",
+      "default": "http://localhost:11434",
+      "required": true
+    },
+    "default_model": {
+      "type": "string",
+      "title": "Default Model",
+      "description": "Default model to use (e.g., llama3.2, mistral, codellama)",
+      "default": "llama3.2",
+      "required": true
+    },
+    "timeout": {
+      "type": "string",
+      "title": "Timeout (ms)",
+      "description": "Request timeout in milliseconds",
+      "default": "120000"
+    }
+  }
+}

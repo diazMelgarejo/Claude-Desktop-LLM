@@ -1,0 +1,56 @@
+{
+  "manifest_version": "0.3",
+  "name": "lmstudio-agent",
+  "display_name": "LM Studio Agent",
+  "version": "1.0.0",
+  "description": "Connect Claude Desktop to LM Studio as an external AI agent",
+  "long_description": "Use local LM Studio models as external agents to delegate tasks, get second opinions, or leverage specialized models for specific tasks. Uses OpenAI-compatible API.",
+  "author": {
+    "name": "Yayoboy"
+  },
+  "license": "MIT",
+  "keywords": [
+    "lmstudio",
+    "llm",
+    "agent",
+    "local",
+    "openai"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "LMSTUDIO_URL": "${user_config.server_url}",
+        "LMSTUDIO_MODEL": "${user_config.default_model}",
+        "TIMEOUT": "${user_config.timeout}"
+      }
+    }
+  },
+  "user_config": {
+    "server_url": {
+      "type": "string",
+      "title": "LM Studio Server URL",
+      "description": "LM Studio server URL",
+      "default": "http://localhost:1234",
+      "required": true
+    },
+    "default_model": {
+      "type": "string",
+      "title": "Default Model",
+      "description": "Default model to use",
+      "default": "default",
+      "required": true
+    },
+    "timeout": {
+      "type": "string",
+      "title": "Timeout (ms)",
+      "description": "Request timeout in milliseconds",
+      "default": "120000"
+    }
+  }
+}
