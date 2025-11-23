@@ -1,0 +1,38 @@
+{
+  "name": "mcp-local-llm",
+  "version": "1.0.0",
+  "description": "MCP server to connect Claude Desktop to local LLMs (Ollama, LM Studio)",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-local-llm": "dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "ollama",
+    "lm-studio",
+    "llm",
+    "ai-agent"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "tsx": "^4.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
