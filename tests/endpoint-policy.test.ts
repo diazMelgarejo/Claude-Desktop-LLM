@@ -16,6 +16,22 @@ describe("endpoint policy", () => {
     assert.equal(pinnedIp, "127.0.0.1");
   });
 
+  test("bracketed IPv6 loopback literal is accepted, not misrouted through DNS", async () => {
+    const { pinnedIp } = await validateAndPin("http://[::1]:11434/api/tags", DENY_ALL);
+    // Preserves the caller's actual IPv6 intent rather than force-hardcoding
+    // 127.0.0.1 -- verified this was a real bug before the fix (isIP() on
+    // the bracketed string returned 0, forcing the IPv4 branch).
+    assert.equal(pinnedIp, "::1");
+  });
+
+  test("canonical hex-compressed IPv4-mapped IPv6 loopback is recognized", async () => {
+    // URL normalizes ::ffff:127.0.0.1 to ::ffff:7f00:1 -- verified directly,
+    // not assumed. The dotted-decimal string-prefix check alone never
+    // matches this canonical form.
+    const { pinnedIp } = await validateAndPin("http://[::ffff:127.0.0.1]/", DENY_ALL);
+    assert.equal(pinnedIp, "::ffff:7f00:1");
+  });
+
   test("URL userinfo is rejected", async () => {
     await assert.rejects(
       () => validateAndPin("http://user:pass@localhost:11434", DENY_ALL),

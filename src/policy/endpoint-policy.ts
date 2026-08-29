@@ -36,11 +36,30 @@ export interface EndpointPolicyOptions {
 const ALLOWED_SCHEMES = new Set(["http:", "https:"]);
 const MAX_REDIRECTS = 3;
 
+function stripBrackets(hostname: string): string {
+  // URL.hostname keeps IPv6 literals bracketed (e.g. "[::1]"), but
+  // node:net's isIP()/dns.lookup() and our own address checks expect
+  // the bare form -- without this, isIP("[::1]") returns 0 and a
+  // literal loopback IPv6 URL would incorrectly attempt a real DNS
+  // lookup on a bracket-containing string.
+  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+}
+
 function isLoopbackAddress(address: string): boolean {
-  if (address === "127.0.0.1" || address === "::1") return true;
-  if (address.startsWith("127.")) return true;
-  // IPv4-mapped IPv6 loopback, e.g. ::ffff:127.0.0.1
-  if (address.startsWith("::ffff:127.")) return true;
+  const addr = stripBrackets(address).toLowerCase();
+  if (addr === "127.0.0.1" || addr === "::1") return true;
+  if (addr.startsWith("127.")) return true;
+  // IPv4-mapped IPv6 loopback, dotted-decimal form, e.g. ::ffff:127.0.0.1
+  if (addr.startsWith("::ffff:127.")) return true;
+  // Same, canonical hex-compressed form: the URL parser normalizes
+  // ::ffff:127.0.0.1 to ::ffff:7f00:1 (0x7f00_0001), not the dotted
+  // form -- verified directly, not assumed. Recognize the full
+  // ::ffff:7f00:0 - ::ffff:7fff:ffff range (127.0.0.0/8 mapped).
+  const hexMapped = addr.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hexMapped) {
+    const ipv4AsInt = (parseInt(hexMapped[1], 16) << 16) | parseInt(hexMapped[2], 16);
+    if ((ipv4AsInt >>> 24) === 127) return true;
+  }
   return false;
 }
 
@@ -52,15 +71,17 @@ function isLoopbackHostname(hostname: string): boolean {
 /**
  * True only when the caller's own hostname string is unambiguously
  * loopback -- a recognized name ("localhost"/"*.localhost") or a literal
- * loopback IP the caller wrote directly (e.g. "127.0.0.1"). False for any
- * other hostname, even if DNS happens to resolve it to a loopback address:
+ * loopback IP the caller wrote directly (e.g. "127.0.0.1", or the
+ * bracketed/hex-compressed IPv6 forms). False for any other hostname,
+ * even if DNS happens to resolve it to a loopback address:
  * DNS is attacker-controlled for domains the attacker owns, so "resolves
  * to loopback" must never be treated as equivalent to "caller directly
  * asked for loopback" -- see the dns_resolved_to_loopback check below.
  */
 function isDirectLoopbackSpecification(hostname: string): boolean {
   if (isLoopbackHostname(hostname)) return true;
-  if (isIP(hostname) && isLoopbackAddress(hostname)) return true;
+  const stripped = stripBrackets(hostname);
+  if (isIP(stripped) && isLoopbackAddress(stripped)) return true;
   return false;
 }
 
@@ -115,7 +136,8 @@ async function resolveHostname(
   resolver: typeof dnsLookup = dnsLookup,
 ): Promise<string> {
   throwIfAborted(signal);
-  if (isIP(hostname)) return hostname;
+  const stripped = stripBrackets(hostname);
+  if (isIP(stripped)) return stripped;
   const lookup = new Promise<string>((resolve, reject) => {
     resolver(hostname, { family: 0 }, (err, address) => {
       if (err || !address) {
@@ -146,7 +168,7 @@ export async function validateAndPin(
 
   const directLoopback = isDirectLoopbackSpecification(url.hostname);
   const resolvedIp =
-    directLoopback && !isIP(url.hostname)
+    directLoopback && !isIP(stripBrackets(url.hostname))
       ? "127.0.0.1"
       : await resolveHostname(url.hostname, signal, resolver);
 
