@@ -1,22 +1,6 @@
 import { guardedFetch } from "../policy/endpoint-policy.js";
 import type { ChatMessage, ModelInfo, ProviderClient, ProviderConfig, ProviderDeps, RunningModel } from "./provider.js";
-import { timed } from "./provider.js";
-
-async function fetchJson(
-  url: string,
-  init: RequestInit,
-  deps: ProviderDeps,
-  timeoutMs: number,
-): Promise<{ ok: boolean; status: number; statusText: string; json: () => Promise<unknown> }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await guardedFetch(url, { ...init, signal: controller.signal }, deps.endpointPolicy);
-    return { ok: response.ok, status: response.status, statusText: response.statusText, json: () => response.json() };
-  } finally {
-    clearTimeout(timer);
-  }
-}
+import { fetchJson, timed } from "./provider.js";
 
 function assertOk(res: { ok: boolean; status: number; statusText: string }, label: string): void {
   if (!res.ok) {
@@ -80,7 +64,9 @@ export class OllamaProvider implements ProviderClient {
   async healthCheck(): Promise<boolean> {
     try {
       const res = await fetchJson(`${this.config.baseUrl}/api/tags`, { method: "GET" }, this.deps, 5000);
-      return res.ok;
+      if (!res.ok) return false;
+      await res.json();
+      return true;
     } catch {
       return false;
     }
@@ -88,35 +74,40 @@ export class OllamaProvider implements ProviderClient {
 
   async pullModel(modelName: string): Promise<string> {
     const controller = new AbortController();
-    const response = await guardedFetch(
-      `${this.config.baseUrl}/api/pull`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: modelName }),
-        signal: controller.signal,
-      },
-      this.deps.endpointPolicy,
-    );
-    if (!response.ok || !response.body) {
-      throw new Error(`Ollama API error (pullModel): ${response.status} ${response.statusText}`);
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let lastStatus = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of decoder.decode(value).split("\n").filter((l) => l.trim())) {
-        try {
-          const parsed = JSON.parse(line) as { status?: string };
-          if (parsed.status) lastStatus = parsed.status;
-        } catch {
-          // Ignore partial/malformed lines mid-stream.
+    const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    try {
+      const response = await guardedFetch(
+        `${this.config.baseUrl}/api/pull`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: modelName }),
+          signal: controller.signal,
+        },
+        this.deps.endpointPolicy,
+      );
+      if (!response.ok || !response.body) {
+        throw new Error(`Ollama API error (pullModel): ${response.status} ${response.statusText}`);
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let lastStatus = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value).split("\n").filter((l) => l.trim())) {
+          try {
+            const parsed = JSON.parse(line) as { status?: string };
+            if (parsed.status) lastStatus = parsed.status;
+          } catch {
+            // Ignore partial/malformed lines mid-stream.
+          }
         }
       }
+      return lastStatus || "Model pull completed";
+    } finally {
+      clearTimeout(timer);
     }
-    return lastStatus || "Model pull completed";
   }
 
   async deleteModel(modelName: string): Promise<string> {
@@ -127,6 +118,7 @@ export class OllamaProvider implements ProviderClient {
       this.config.timeoutMs,
     );
     assertOk(res, "deleteModel");
+    res.finish();
     return `Model ${modelName} deleted successfully`;
   }
 

@@ -1,22 +1,5 @@
-import { guardedFetch } from "../policy/endpoint-policy.js";
 import type { ChatMessage, ModelInfo, ProviderClient, ProviderConfig, ProviderDeps } from "./provider.js";
-import { timed } from "./provider.js";
-
-async function fetchJson(
-  url: string,
-  init: RequestInit,
-  deps: ProviderDeps,
-  timeoutMs: number,
-): Promise<{ ok: boolean; status: number; statusText: string; json: () => Promise<unknown> }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await guardedFetch(url, { ...init, signal: controller.signal }, deps.endpointPolicy);
-    return { ok: response.ok, status: response.status, statusText: response.statusText, json: () => response.json() };
-  } finally {
-    clearTimeout(timer);
-  }
-}
+import { fetchJson, timed } from "./provider.js";
 
 function assertOk(res: { ok: boolean; status: number; statusText: string }, label: string): void {
   if (!res.ok) {
@@ -80,7 +63,9 @@ export class LMStudioProvider implements ProviderClient {
   async healthCheck(): Promise<boolean> {
     try {
       const res = await fetchJson(`${this.config.baseUrl}/v1/models`, { method: "GET" }, this.deps, 5000);
-      return res.ok;
+      if (!res.ok) return false;
+      await res.json();
+      return true;
     } catch {
       return false;
     }

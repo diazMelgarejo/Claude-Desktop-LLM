@@ -1,4 +1,4 @@
-import type { EndpointPolicyOptions } from "../policy/endpoint-policy.js";
+import { guardedFetch, type EndpointPolicyOptions } from "../policy/endpoint-policy.js";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -74,4 +74,59 @@ export async function timed<T>(
 export interface ProviderDeps {
   endpointPolicy: EndpointPolicyOptions;
   observe?: ObservationSink;
+}
+
+export interface ProviderJsonResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json: () => Promise<unknown>;
+  /** Clear the deadline for successful calls that intentionally do not read a body. */
+  finish: () => void;
+}
+
+/**
+ * Fetch a provider JSON response under one deadline that remains active through
+ * body consumption. Non-2xx responses clear the deadline immediately because
+ * callers reject them without consuming the body.
+ */
+export async function fetchJson(
+  url: string,
+  init: RequestInit,
+  deps: ProviderDeps,
+  timeoutMs: number,
+): Promise<ProviderJsonResponse> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+  };
+
+  try {
+    const response = await guardedFetch(url, { ...init, signal: controller.signal }, deps.endpointPolicy);
+    if (!response.ok) {
+      finish();
+      return { ok: response.ok, status: response.status, statusText: response.statusText, json: () => response.json(), finish };
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      json: async () => {
+        try {
+          return await response.json();
+        } finally {
+          finish();
+        }
+      },
+      finish,
+    };
+  } catch (err) {
+    finish();
+    throw err;
+  }
 }
