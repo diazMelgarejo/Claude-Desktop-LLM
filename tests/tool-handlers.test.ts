@@ -34,6 +34,17 @@ describe("tool handler review hardening", () => {
     assert.equal(ctx.config.activeProvider, "ollama");
   });
 
+  test("invalid provider on a query tool is rejected, not silently run against activeProvider", async () => {
+    const ctx = makeContext();
+    const result = await handleToolCall(
+      "local_llm_query",
+      { prompt: "hello", provider: "invalid" },
+      ctx,
+    );
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /provider must be exactly "ollama" or "lmstudio"/);
+  });
+
   test("arbitrary Error messages are not exposed to MCP clients", () => {
     const result = toolErrorText(new Error("provider failed at https://secret.internal/model/private"));
     assert.equal(result, "Error: Request failed. Check local runtime status and configuration.");

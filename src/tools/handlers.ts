@@ -47,6 +47,9 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
     return errorText(toolErrorText(err));
   }
 
+  if (args.provider !== undefined && args.provider !== "ollama" && args.provider !== "lmstudio") {
+    return errorText('Error: provider must be exactly "ollama" or "lmstudio".');
+  }
   const provider = selectProvider(ctx, args.provider);
 
   switch (name) {
