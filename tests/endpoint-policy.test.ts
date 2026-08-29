@@ -63,6 +63,49 @@ describe("endpoint policy", () => {
     );
   });
 
+  test("an allowlisted hostname resolving to loopback is rejected, not silently trusted as loopback", async () => {
+    // Deterministic fake resolver -- no live DNS dependency, matching this
+    // file's own established convention. Simulates an attacker-controlled
+    // domain whose DNS points at 127.0.0.1 specifically to try to bypass
+    // ALLOW_REMOTE_LLM/ALLOWED_LLM_HOSTS/HTTPS via loopback auto-trust.
+    const fakeResolver: typeof import("node:dns").lookup = ((
+      _hostname: string,
+      _opts: unknown,
+      cb: (err: NodeJS.ErrnoException | null, address: string, family: number) => void,
+    ) => {
+      cb(null, "127.0.0.1", 4);
+    }) as typeof import("node:dns").lookup;
+
+    await assert.rejects(
+      () =>
+        validateAndPin(
+          "https://attacker-controlled.example/",
+          { allowRemoteLlm: true, allowedLlmHosts: ["attacker-controlled.example"] },
+          undefined,
+          fakeResolver,
+        ),
+      (err: unknown) => err instanceof EndpointPolicyError && err.code === "dns_resolved_to_loopback",
+    );
+  });
+
+  test("a hostname resolving to a normal remote address is unaffected by the loopback-resolution check", async () => {
+    const fakeResolver: typeof import("node:dns").lookup = ((
+      _hostname: string,
+      _opts: unknown,
+      cb: (err: NodeJS.ErrnoException | null, address: string, family: number) => void,
+    ) => {
+      cb(null, "203.0.113.5", 4);
+    }) as typeof import("node:dns").lookup;
+
+    const { pinnedIp } = await validateAndPin(
+      "https://provider.example/",
+      { allowRemoteLlm: true, allowedLlmHosts: ["provider.example"] },
+      undefined,
+      fakeResolver,
+    );
+    assert.equal(pinnedIp, "203.0.113.5");
+  });
+
   test("an already-aborted request is rejected before endpoint validation can block", async () => {
     const controller = new AbortController();
     controller.abort();

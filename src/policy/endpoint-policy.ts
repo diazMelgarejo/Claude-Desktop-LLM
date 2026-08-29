@@ -20,6 +20,7 @@ export class EndpointPolicyError extends Error {
       | "no_hostname"
       | "non_loopback_denied"
       | "dns_resolution_failed"
+      | "dns_resolved_to_loopback"
       | "redirect_limit"
       | "redirect_denied",
   ) {
@@ -46,6 +47,21 @@ function isLoopbackAddress(address: string): boolean {
 function isLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
   return normalized === "localhost" || normalized.endsWith(".localhost");
+}
+
+/**
+ * True only when the caller's own hostname string is unambiguously
+ * loopback -- a recognized name ("localhost"/"*.localhost") or a literal
+ * loopback IP the caller wrote directly (e.g. "127.0.0.1"). False for any
+ * other hostname, even if DNS happens to resolve it to a loopback address:
+ * DNS is attacker-controlled for domains the attacker owns, so "resolves
+ * to loopback" must never be treated as equivalent to "caller directly
+ * asked for loopback" -- see the dns_resolved_to_loopback check below.
+ */
+function isDirectLoopbackSpecification(hostname: string): boolean {
+  if (isLoopbackHostname(hostname)) return true;
+  if (isIP(hostname) && isLoopbackAddress(hostname)) return true;
+  return false;
 }
 
 function abortError(): Error {
@@ -93,11 +109,15 @@ function assertStructurallyValid(url: URL): void {
   }
 }
 
-async function resolveHostname(hostname: string, signal?: AbortSignal): Promise<string> {
+async function resolveHostname(
+  hostname: string,
+  signal?: AbortSignal,
+  resolver: typeof dnsLookup = dnsLookup,
+): Promise<string> {
   throwIfAborted(signal);
   if (isIP(hostname)) return hostname;
   const lookup = new Promise<string>((resolve, reject) => {
-    dnsLookup(hostname, { family: 0 }, (err, address) => {
+    resolver(hostname, { family: 0 }, (err, address) => {
       if (err || !address) {
         reject(
           new EndpointPolicyError(`DNS resolution failed for ${JSON.stringify(hostname)}`, "dns_resolution_failed"),
@@ -118,19 +138,34 @@ export async function validateAndPin(
   rawUrl: string,
   opts: EndpointPolicyOptions,
   signal?: AbortSignal,
+  resolver: typeof dnsLookup = dnsLookup,
 ): Promise<{ url: URL; pinnedIp: string }> {
   const url = new URL(rawUrl);
   assertStructurallyValid(url);
   throwIfAborted(signal);
 
-  const hostnameIsLoopback = isLoopbackHostname(url.hostname);
+  const directLoopback = isDirectLoopbackSpecification(url.hostname);
   const resolvedIp =
-    hostnameIsLoopback && !isIP(url.hostname)
+    directLoopback && !isIP(url.hostname)
       ? "127.0.0.1"
-      : await resolveHostname(url.hostname, signal);
-  const addressIsLoopback = isLoopbackAddress(resolvedIp) || hostnameIsLoopback;
+      : await resolveHostname(url.hostname, signal, resolver);
 
-  if (!addressIsLoopback) {
+  // Never trust DNS resolution results for the loopback-trust decision --
+  // only a hostname the caller directly specified as loopback earns it.
+  // A hostname that isn't itself loopback but resolves there is rejected
+  // outright, before ALLOW_REMOTE_LLM, the allowlist, or HTTPS can permit
+  // it: an attacker who owns a domain can always point its DNS at
+  // 127.0.0.1, and there is no legitimate reason a genuinely-remote,
+  // allowlisted, HTTPS endpoint should ever resolve to loopback.
+  if (!directLoopback && isLoopbackAddress(resolvedIp)) {
+    throw new EndpointPolicyError(
+      `hostname ${JSON.stringify(url.hostname)} resolved to a loopback address (${resolvedIp}); ` +
+        `DNS-mediated loopback resolution is never trusted regardless of ALLOW_REMOTE_LLM or ALLOWED_LLM_HOSTS`,
+      "dns_resolved_to_loopback",
+    );
+  }
+
+  if (!directLoopback) {
     const hostAllowed = opts.allowedLlmHosts.includes(url.hostname.toLowerCase());
     if (!opts.allowRemoteLlm || !hostAllowed) {
       throw new EndpointPolicyError(
