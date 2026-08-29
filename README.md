@@ -13,7 +13,7 @@ cd Claude-Desktop-LLM
 cp .env.example .env   # then edit as needed
 npm ci
 npm run build
-npm test               # 50 native node:test tests, zero test-framework dependency
+npm test               # native node:test tests, zero test-framework dependency
 npm start               # combined server (both providers) on stdio
 # or: npm run start:ollama / npm run start:lmstudio
 ```
@@ -101,7 +101,7 @@ tool's declared classes.
 
 ## Project structure
 
-```
+```text
 Claude-Desktop-LLM/
 ├── src/
 │   ├── config.ts                 # env parsing + validation, fail closed
