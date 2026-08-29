@@ -1,60 +1,57 @@
 #!/bin/bash
-# Build script for .mcpb extensions
+# Build script for .mcpb extensions -- builds the canonical TypeScript
+# implementation ONCE, then stages a copy of the compiled output plus each
+# extension's manifest into a clean temp directory per extension, installs
+# production dependencies there (npm ci --omit=dev, lockfile-strict), and
+# packs. The extension directories under extensions/*/ contain only
+# manifests and packaging metadata -- no server source is duplicated.
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 EXTENSIONS_DIR="$ROOT_DIR/extensions"
-OUTPUT_DIR="$ROOT_DIR/dist"
+OUTPUT_DIR="$ROOT_DIR/dist-release"
 
-# Create output directory
+echo "=== Building canonical TypeScript implementation ==="
+cd "$ROOT_DIR"
+npm ci
+npm run build
+echo "✓ Canonical build complete: dist/"
+
 mkdir -p "$OUTPUT_DIR"
 
-echo "Building MCP extensions..."
+package_extension() {
+  local name="$1"
+  local ext_dir="$EXTENSIONS_DIR/$name"
+  local staging
+  staging="$(mktemp -d)"
 
-# Build Ollama Agent
-echo ""
-echo "=== Building Ollama Agent ==="
-cd "$EXTENSIONS_DIR/ollama-agent"
-npm install --production
-echo "✓ Dependencies installed"
+  echo ""
+  echo "=== Staging $name ==="
+  mkdir -p "$staging/server"
+  cp -R "$ROOT_DIR/dist/." "$staging/server/"
+  cp "$ext_dir/manifest.json" "$staging/manifest.json"
+  cp "$ROOT_DIR/package.json" "$staging/package.json"
+  echo "✓ Copied canonical dist/ + manifest"
 
-# Build LM Studio Agent
-echo ""
-echo "=== Building LM Studio Agent ==="
-cd "$EXTENSIONS_DIR/lmstudio-agent"
-npm install --production
-echo "✓ Dependencies installed"
+  echo "Installing production dependencies (lockfile-strict)..."
+  (cd "$staging" && cp "$ROOT_DIR/package-lock.json" . && npm ci --omit=dev)
+  echo "✓ Dependencies installed"
 
-echo ""
-echo "=== Packaging extensions ==="
+  if command -v mcpb &> /dev/null; then
+    (cd "$staging" && mcpb pack . "$OUTPUT_DIR/$name.mcpb")
+  else
+    echo "mcpb CLI not found -- creating ZIP archive manually. Install with: npm install -g @anthropic-ai/mcpb"
+    (cd "$staging" && zip -rq "$OUTPUT_DIR/$name.mcpb" . -x "*.DS_Store")
+  fi
+  echo "✓ Created $name.mcpb"
 
-# Check if mcpb CLI is available
-if command -v mcpb &> /dev/null; then
-    echo "Using mcpb CLI to create .mcpb files..."
+  rm -rf "$staging"
+}
 
-    cd "$EXTENSIONS_DIR/ollama-agent"
-    mcpb pack . "$OUTPUT_DIR/ollama-agent.mcpb"
-    echo "✓ Created ollama-agent.mcpb"
-
-    cd "$EXTENSIONS_DIR/lmstudio-agent"
-    mcpb pack . "$OUTPUT_DIR/lmstudio-agent.mcpb"
-    echo "✓ Created lmstudio-agent.mcpb"
-else
-    echo "mcpb CLI not found. Creating ZIP archives manually..."
-    echo "Install mcpb with: npm install -g @anthropic-ai/mcpb"
-    echo ""
-
-    # Create ZIP archives (rename to .mcpb)
-    cd "$EXTENSIONS_DIR/ollama-agent"
-    zip -r "$OUTPUT_DIR/ollama-agent.mcpb" . -x "*.DS_Store"
-    echo "✓ Created ollama-agent.mcpb"
-
-    cd "$EXTENSIONS_DIR/lmstudio-agent"
-    zip -r "$OUTPUT_DIR/lmstudio-agent.mcpb" . -x "*.DS_Store"
-    echo "✓ Created lmstudio-agent.mcpb"
-fi
+package_extension "ollama-agent"
+package_extension "lmstudio-agent"
 
 echo ""
 echo "=== Build complete ==="
@@ -64,6 +61,6 @@ echo "  - lmstudio-agent.mcpb"
 echo ""
 echo "To install in Claude Desktop:"
 echo "  1. Open Claude Desktop"
-echo "  2. Go to Settings → Extensions"
-echo "  3. Click 'Advanced settings' → 'Install Extension...'"
+echo "  2. Go to Settings -> Extensions"
+echo "  3. Click 'Advanced settings' -> 'Install Extension...'"
 echo "  4. Select the .mcpb file"

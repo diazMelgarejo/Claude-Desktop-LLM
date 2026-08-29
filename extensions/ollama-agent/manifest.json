@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "ollama-agent",
   "display_name": "Ollama Agent",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Connect Claude Desktop to Ollama as an external AI agent",
-  "long_description": "Use local Ollama models as external agents to delegate tasks, get second opinions, or leverage specialized models for specific tasks.",
+  "long_description": "Use local Ollama models as external agents to delegate tasks, get second opinions, or leverage specialized models for specific tasks. Built from the canonical mcp-local-llm TypeScript implementation, not a separately maintained copy.",
   "author": {
     "name": "Yayoboy"
   },
@@ -17,16 +17,19 @@
   ],
   "server": {
     "type": "node",
-    "entry_point": "server/index.js",
+    "entry_point": "server/entrypoints/ollama.js",
     "mcp_config": {
       "command": "node",
       "args": [
-        "${__dirname}/server/index.js"
+        "${__dirname}/server/entrypoints/ollama.js"
       ],
       "env": {
         "OLLAMA_URL": "${user_config.server_url}",
         "OLLAMA_MODEL": "${user_config.default_model}",
-        "TIMEOUT": "${user_config.timeout}"
+        "TIMEOUT": "${user_config.timeout}",
+        "ALLOW_REMOTE_LLM": "${user_config.allow_remote_llm}",
+        "ALLOWED_LLM_HOSTS": "${user_config.allowed_llm_hosts}",
+        "ALLOW_DESTRUCTIVE_TOOLS": "${user_config.allow_destructive_tools}"
       }
     }
   },
@@ -50,6 +53,24 @@
       "title": "Timeout (ms)",
       "description": "Request timeout in milliseconds",
       "default": "120000"
+    },
+    "allow_remote_llm": {
+      "type": "string",
+      "title": "Allow Remote/LAN LLM (advanced)",
+      "description": "Set to 1 to allow a non-loopback Ollama server URL (LAN/remote). Denied by default -- also requires Allowed LLM Hosts below.",
+      "default": "0"
+    },
+    "allowed_llm_hosts": {
+      "type": "string",
+      "title": "Allowed LLM Hosts (advanced)",
+      "description": "Comma-separated hostnames/IPs permitted when Allow Remote/LAN LLM is enabled.",
+      "default": ""
+    },
+    "allow_destructive_tools": {
+      "type": "string",
+      "title": "Allow Destructive Tools (advanced)",
+      "description": "Set to 1 to enable delete_model. Disabled by default; the tool is not even advertised while disabled.",
+      "default": "0"
     }
   }
 }
