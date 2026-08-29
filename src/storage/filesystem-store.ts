@@ -78,7 +78,8 @@ export function assertSafeName(name: string): string {
   if (name.endsWith(".") || name.endsWith(" ")) {
     throw new StorageError("name must not end with a dot or a space", "invalid_name");
   }
-  if (RESERVED_WINDOWS_NAMES.has(name.toLowerCase())) {
+  const reservedStem = name.toLowerCase().split(".", 1)[0];
+  if (RESERVED_WINDOWS_NAMES.has(reservedStem)) {
     throw new StorageError(`name ${JSON.stringify(name)} is a reserved Windows device name`, "invalid_name");
   }
   return name;

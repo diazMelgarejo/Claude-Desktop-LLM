@@ -5,6 +5,7 @@ import type { LMStudioProvider } from "../providers/lmstudio.js";
 import type { OllamaProvider } from "../providers/ollama.js";
 import { findToolDefinition } from "./registry.js";
 import { substituteTemplate } from "./template-substitution.js";
+import { publicErrorMessage, toolErrorText } from "./errors.js";
 
 export interface ToolContext {
   config: AppConfig;
@@ -43,7 +44,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
   try {
     assertToolEnabled(name, definition.effectClasses, { allowDestructiveTools: ctx.config.allowDestructiveTools });
   } catch (err) {
-    return errorText((err as Error).message);
+    return errorText(toolErrorText(err));
   }
 
   const provider = selectProvider(ctx, args.provider);
@@ -82,7 +83,10 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       );
     }
     case "switch_llm_provider": {
-      ctx.config.activeProvider = args.provider as ProviderName;
+      if (args.provider !== "ollama" && args.provider !== "lmstudio") {
+        return errorText('Error: provider must be exactly "ollama" or "lmstudio".');
+      }
+      ctx.config.activeProvider = args.provider;
       return text(`Switched to ${args.provider === "ollama" ? "Ollama" : "LM Studio"}`);
     }
     case "check_llm_status": {
@@ -179,7 +183,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
         try {
           results.push({ model, response: await provider.client.generate(args.prompt as string, model) });
         } catch (e) {
-          results.push({ model, error: (e as Error).message });
+          results.push({ model, error: publicErrorMessage(e) });
         }
       }
       return text(results.map((r) => (r.error ? `## ${r.model}\nError: ${r.error}` : `## ${r.model}\n${r.response}`)).join("\n\n---\n\n"));
@@ -208,7 +212,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
           const response = await provider.client.generate(prompt, args.model as string | undefined);
           results.push({ prompt: `${prompt.substring(0, 50)}...`, response, success: true });
         } catch (e) {
-          results.push({ prompt: `${prompt.substring(0, 50)}...`, error: (e as Error).message, success: false });
+          results.push({ prompt: `${prompt.substring(0, 50)}...`, error: publicErrorMessage(e), success: false });
         }
       }
       const successCount = results.filter((r) => r.success).length;

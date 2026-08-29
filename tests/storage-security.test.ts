@@ -64,6 +64,8 @@ describe("storage security", () => {
   test("reserved Windows device name is rejected", () => {
     assert.throws(() => assertSafeName("CON"), StorageError);
     assert.throws(() => assertSafeName("con"), StorageError);
+    assert.throws(() => assertSafeName("CON.txt"), StorageError);
+    assert.throws(() => assertSafeName("LPT1.md"), StorageError);
   });
 
   test("loading a nonexistent conversation raises StorageError, not a raw fs error", async () => {

@@ -48,6 +48,39 @@ function isLoopbackHostname(hostname: string): boolean {
   return normalized === "localhost" || normalized.endsWith(".localhost");
 }
 
+function abortError(): Error {
+  const err = new Error("The operation was aborted");
+  err.name = "AbortError";
+  return err;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw signal.reason ?? abortError();
+  }
+}
+
+function raceWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) return Promise.reject(signal.reason ?? abortError());
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? abortError());
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    operation.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
 function assertStructurallyValid(url: URL): void {
   if (!ALLOWED_SCHEMES.has(url.protocol)) {
     throw new EndpointPolicyError(`scheme not allowed: ${url.protocol}`, "scheme_disallowed");
@@ -60,9 +93,10 @@ function assertStructurallyValid(url: URL): void {
   }
 }
 
-async function resolveHostname(hostname: string): Promise<string> {
+async function resolveHostname(hostname: string, signal?: AbortSignal): Promise<string> {
+  throwIfAborted(signal);
   if (isIP(hostname)) return hostname;
-  return await new Promise<string>((resolve, reject) => {
+  const lookup = new Promise<string>((resolve, reject) => {
     dnsLookup(hostname, { family: 0 }, (err, address) => {
       if (err || !address) {
         reject(
@@ -73,6 +107,7 @@ async function resolveHostname(hostname: string): Promise<string> {
       resolve(address);
     });
   });
+  return await raceWithAbort(lookup, signal);
 }
 
 /**
@@ -82,12 +117,17 @@ async function resolveHostname(hostname: string): Promise<string> {
 export async function validateAndPin(
   rawUrl: string,
   opts: EndpointPolicyOptions,
+  signal?: AbortSignal,
 ): Promise<{ url: URL; pinnedIp: string }> {
   const url = new URL(rawUrl);
   assertStructurallyValid(url);
+  throwIfAborted(signal);
 
   const hostnameIsLoopback = isLoopbackHostname(url.hostname);
-  const resolvedIp = hostnameIsLoopback && !isIP(url.hostname) ? "127.0.0.1" : await resolveHostname(url.hostname);
+  const resolvedIp =
+    hostnameIsLoopback && !isIP(url.hostname)
+      ? "127.0.0.1"
+      : await resolveHostname(url.hostname, signal);
   const addressIsLoopback = isLoopbackAddress(resolvedIp) || hostnameIsLoopback;
 
   if (!addressIsLoopback) {
@@ -97,6 +137,12 @@ export async function validateAndPin(
         `non-loopback destination denied by default: ${url.hostname} (${resolvedIp}). ` +
           `Set ALLOW_REMOTE_LLM=1 and add "${url.hostname}" to ALLOWED_LLM_HOSTS to permit.`,
         "non_loopback_denied",
+      );
+    }
+    if (url.protocol !== "https:") {
+      throw new EndpointPolicyError(
+        "non-loopback provider endpoints require HTTPS; cleartext HTTP is allowed only for loopback",
+        "scheme_disallowed",
       );
     }
   }
@@ -141,7 +187,7 @@ export async function guardedFetch(
   if (hop > MAX_REDIRECTS) {
     throw new EndpointPolicyError(`redirect limit ${MAX_REDIRECTS} exceeded`, "redirect_limit");
   }
-  const { url, pinnedIp } = await validateAndPin(rawUrl, opts);
+  const { url, pinnedIp } = await validateAndPin(rawUrl, opts, init.signal);
   const dispatcher = pinnedDispatcher(pinnedIp);
   let response: Response;
   try {

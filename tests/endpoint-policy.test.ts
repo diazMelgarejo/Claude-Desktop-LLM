@@ -38,13 +38,20 @@ describe("endpoint policy", () => {
     );
   });
 
-  test("explicit opt-in permits a specific allowed host", async () => {
+  test("explicit opt-in permits a specific allowed remote host over HTTPS", async () => {
     // IP literal -- deterministic, no real DNS/network dependency.
-    const { pinnedIp } = await validateAndPin("http://10.0.0.5/", {
+    const { pinnedIp } = await validateAndPin("https://10.0.0.5/", {
       allowRemoteLlm: true,
       allowedLlmHosts: ["10.0.0.5"],
     });
     assert.equal(pinnedIp, "10.0.0.5");
+  });
+
+  test("explicitly allowlisted non-loopback HTTP is still rejected", async () => {
+    await assert.rejects(
+      () => validateAndPin("http://10.0.0.5/", { allowRemoteLlm: true, allowedLlmHosts: ["10.0.0.5"] }),
+      (err: unknown) => err instanceof EndpointPolicyError && err.code === "scheme_disallowed",
+    );
   });
 
   test("opt-in flag alone (without the host on the allowlist) still denies", async () => {
@@ -53,6 +60,20 @@ describe("endpoint policy", () => {
     await assert.rejects(
       () => validateAndPin("http://10.0.0.5/", { allowRemoteLlm: true, allowedLlmHosts: ["example.com"] }),
       (err: unknown) => err instanceof EndpointPolicyError && err.code === "non_loopback_denied",
+    );
+  });
+
+  test("an already-aborted request is rejected before endpoint validation can block", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(
+      () =>
+        guardedFetch(
+          "https://provider.invalid/",
+          { signal: controller.signal },
+          { allowRemoteLlm: true, allowedLlmHosts: ["provider.invalid"] },
+        ),
+      (err: unknown) => err instanceof Error && err.name === "AbortError",
     );
   });
 
