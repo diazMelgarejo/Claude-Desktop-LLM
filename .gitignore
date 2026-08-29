@@ -2,3 +2,11 @@ node_modules/
 *.log
 .DS_Store
 .env
+
+# Compiled output and packaged release artifacts -- GitHub Releases is the
+# authority for .mcpb distribution now, not the git tree (plan section 11).
+dist/
+dist-release/
+
+# Local Claude Code session artifacts.
+.claude/

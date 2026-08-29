@@ -1,16 +1,19 @@
 {
   "name": "mcp-local-llm",
-  "version": "1.0.0",
-  "description": "MCP server to connect Claude Desktop to local LLMs (Ollama, LM Studio)",
-  "main": "dist/index.js",
+  "version": "2.0.0",
+  "description": "MCP server to connect Claude Desktop to local LLMs (Ollama, LM Studio) -- single canonical TypeScript implementation",
+  "main": "dist/entrypoints/combined.js",
   "bin": {
-    "mcp-local-llm": "dist/index.js"
+    "mcp-local-llm": "dist/entrypoints/combined.js"
   },
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
+    "start": "node dist/entrypoints/combined.js",
+    "start:ollama": "node dist/entrypoints/ollama.js",
+    "start:lmstudio": "node dist/entrypoints/lmstudio.js",
+    "dev": "tsx src/entrypoints/combined.ts",
+    "test": "node --import tsx/esm --test tests/*.test.ts",
     "prepare": "npm run build"
   },
   "keywords": [
@@ -24,7 +27,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "undici": "^7.2.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
