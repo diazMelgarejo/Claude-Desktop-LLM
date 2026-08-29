@@ -36,7 +36,11 @@ package_extension() {
   echo "✓ Copied canonical dist/ + manifest"
 
   echo "Installing production dependencies (lockfile-strict)..."
-  (cd "$staging" && cp "$ROOT_DIR/package-lock.json" . && npm ci --omit=dev)
+  # --ignore-scripts: dist/ is already the built output copied in above: the
+  # staged package.json's own "prepare" -> "npm run build" -> tsc would fail
+  # here anyway, since --omit=dev deliberately excludes the typescript
+  # devDependency from this production-only install.
+  (cd "$staging" && cp "$ROOT_DIR/package-lock.json" . && npm ci --omit=dev --ignore-scripts)
   echo "✓ Dependencies installed"
 
   if command -v mcpb &> /dev/null; then
